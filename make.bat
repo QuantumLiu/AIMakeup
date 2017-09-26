@@ -1,0 +1,1 @@
+pyinstaller -F -w -i makeup.ico -p c:\Anaconda3\Lib\site-packages\PyQt5\Qt\bin Ui_MakupGUI.py -y

@@ -34,14 +34,14 @@ class Organ():
         self.move=int(np.sqrt(self.size/3)/20)
         self.ksize=self.get_ksize()
         self.patch_bgr,self.patch_hsv=self.get_patch(self.im_bgr),self.get_patch(self.im_hsv)
-        self.set_temp((temp_bgr,temp_hsv))
+        self.set_temp(temp_bgr,temp_hsv)
         self.patch_mask=self.get_mask_re()
         pass
     
-    def set_temp(self,temps):
-        lf=lambda im:(im,self.get_patch(im))
-        (self.im_bgr_temp,self.patch_bgr_temp),(self.im_hsv_temp,self.patch_hsv_temp)=(lf(temp) for temp in temps)
-        
+    def set_temp(self,temp_bgr,temp_hsv):
+        self.im_bgr_temp,self.im_hsv_temp=temp_bgr,temp_hsv
+        self.patch_bgr_temp,self.patch_hsv_temp=self.get_patch(self.im_bgr_temp),self.get_patch(self.im_hsv_temp)
+
     def confirm(self):
         '''
         确认操作
@@ -124,8 +124,9 @@ class Organ():
             self.im_bgr[:]=cv2.cvtColor(self.im_hsv, cv2.COLOR_HSV2BGR)[:]
             self.update_temp()
         else:
-            self.patch_hsv_temp[:,:,-1]=np.minimum(self.patch_hsv[:,:,-1]+self.patch_hsv[:,:,-1]*self.patch_mask[:,:,-1]*rate,255).astype('uint8')
-            self.im_bgr_temp[:]=cv2.cvtColor(self.patch_hsv_temp, cv2.COLOR_HSV2BGR)[:]
+            self.patch_hsv_temp[:]=cv2.cvtColor(self.patch_bgr_temp, cv2.COLOR_BGR2HSV)[:]
+            self.patch_hsv_temp[:,:,-1]=np.minimum(self.patch_hsv_temp[:,:,-1]+self.patch_hsv_temp[:,:,-1]*self.patch_mask[:,:,-1]*rate,255).astype('uint8')
+            self.patch_bgr_temp[:]=cv2.cvtColor(self.patch_hsv_temp, cv2.COLOR_HSV2BGR)[:]
             
     def brightening(self,rate=0.3,confirm=True):
         '''
@@ -135,16 +136,19 @@ class Organ():
             confirm:wether confirm this option
         '''
         patch_mask=self.get_mask_re((1,1))
-        patch_new=self.patch_hsv[:,:,1]*patch_mask[:,:,1]*rate
-        patch_new=cv2.GaussianBlur(patch_new,(3,3),0)
         if confirm:
             self.confirm()
+            patch_new=self.patch_hsv[:,:,1]*patch_mask[:,:,1]*rate
+            patch_new=cv2.GaussianBlur(patch_new,(3,3),0)
             self.patch_hsv[:,:,1]=np.minimum(self.patch_hsv[:,:,1]+patch_new,255).astype('uint8')
             self.im_bgr[:]=cv2.cvtColor(self.im_hsv, cv2.COLOR_HSV2BGR)[:]
             self.update_temp()
         else:
+            self.patch_hsv_temp[:]=cv2.cvtColor(self.patch_bgr_temp, cv2.COLOR_BGR2HSV)[:]
+            patch_new=self.patch_hsv_temp[:,:,1]*patch_mask[:,:,1]*rate
+            patch_new=cv2.GaussianBlur(patch_new,(3,3),0)
             self.patch_hsv_temp[:,:,1]=np.minimum(self.patch_hsv[:,:,1]+patch_new,255).astype('uint8')
-            self.im_bgr_temp[:]=cv2.cvtColor(self.patch_hsv_temp, cv2.COLOR_HSV2BGR)[:]
+            self.patch_bgr_temp[:]=cv2.cvtColor(self.patch_hsv_temp, cv2.COLOR_HSV2BGR)[:]
         
     def smooth(self,rate=0.6,ksize=None,confirm=True):
         '''
@@ -155,15 +159,16 @@ class Organ():
         '''
         if ksize==None:
             ksize=self.get_ksize(80)
-        patch_new=cv2.GaussianBlur(cv2.bilateralFilter(self.patch_bgr,3,*ksize),ksize,0)
         index=self.patch_mask>0
         if confirm:
             self.confirm()
+            patch_new=cv2.GaussianBlur(cv2.bilateralFilter(self.patch_bgr,3,*ksize),ksize,0)
             self.patch_bgr[index]=np.minimum(rate*patch_new[index]+(1-rate)*self.patch_bgr[index],255).astype('uint8')
             self.im_hsv[:]=cv2.cvtColor(self.im_bgr, cv2.COLOR_BGR2HSV)[:]
             self.update_temp()
         else:
-            self.patch_bgr_temp[index]=(rate*patch_new[index]+(1-rate)*self.patch_bgr[index]).astype('uint8')
+            patch_new=cv2.GaussianBlur(cv2.bilateralFilter(self.patch_bgr_temp,3,*ksize),ksize,0)
+            self.patch_bgr_temp[index]=np.minimum(rate*patch_new[index]+(1-rate)*self.patch_bgr_temp[index],255).astype('uint8')
             self.patch_hsv_temp[:]=cv2.cvtColor(self.patch_bgr_temp, cv2.COLOR_BGR2HSV)[:]
         
     def sharpen(self,rate=0.3,confirm=True):
@@ -178,14 +183,15 @@ class Organ():
         
         #Subtract the two:
         kernel = kernel - boxFilter
-        sharp=cv2.filter2D(self.patch_bgr,-1,kernel)
         index=patch_mask>0
         if confirm:
             self.confirm()
+            sharp=cv2.filter2D(self.patch_bgr,-1,kernel)
             self.patch_bgr[index]=np.minimum(((1-rate)*self.patch_bgr)[index]+sharp[index]*rate,255).astype('uint8')
             self.update_temp()
         else:
-            self.patch_bgr_temp[:]=np.minimum(self.patch_bgr+self.patch_mask*sharp*rate,255).astype('uint8')
+            sharp=cv2.filter2D(self.patch_bgr_temp,-1,kernel)
+            self.patch_bgr_temp[:]=np.minimum(self.patch_bgr_temp+self.patch_mask*sharp*rate,255).astype('uint8')
             self.patch_hsv_temp[:]=cv2.cvtColor(self.patch_bgr_temp, cv2.COLOR_BGR2HSV)[:]
 
 class Face(Organ):
@@ -263,7 +269,7 @@ class Makeup():
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(self.PREDICTOR_PATH)
 
-    def get_faces(self,im_bgr,name,n=1):
+    def get_faces(self,im_bgr,im_hsv,temp_bgr,temp_hsv,name,n=1):
         '''
         人脸定位和特征提取，定位到两张及以上脸或者没有人脸将抛出异常
         im:
@@ -277,8 +283,6 @@ class Makeup():
         
         if len(rects) <1:
             raise NoFace('Too many faces in '+name)
-        im_hsv=cv2.cvtColor(im_bgr, cv2.COLOR_BGR2HSV)
-        temp_bgr,temp_hsv=im_bgr.copy(),im_hsv.copy()
         return {name:[Face(im_bgr,im_hsv,temp_bgr,temp_hsv,np.array([[p.x, p.y] for p in self.predictor(im_bgr, rect).parts()]),i) for i,rect in enumerate(rects)]}
 
     def read_im(self,fname,scale=1):
@@ -292,17 +296,20 @@ class Makeup():
         return im
 
     def read_and_mark(self,fname):
-        im=self.read_im(fname)
-        return im,self.get_faces(im,fname)
+        im_bgr=self.read_im(fname)
+        im_hsv=cv2.cvtColor(im_bgr, cv2.COLOR_BGR2HSV)
+        temp_bgr,temp_hsv=im_bgr.copy(),im_hsv.copy()
+        return im_bgr,temp_bgr,self.get_faces(im_bgr,im_hsv,temp_bgr,temp_hsv,fname)
 
 if __name__=='__main__':
-    path='./raw/2.jpg'
+    path='./raw/10.jpg'
     mu=Makeup()
-    im,faces=mu.read_and_mark(path)
+    im,temp_bgr,faces=mu.read_and_mark(path)
     imc=im.copy()
     cv2.imshow('ori',imc)
     for face in faces[path]:
         face.whitening()
+        face.smooth(0.7)
         face.organs['forehead'].whitening()
         face.organs['forehead'].smooth(0.7)
         face.organs['mouth'].brightening()
@@ -321,7 +328,6 @@ if __name__=='__main__':
         face.organs['nose'].whitening()
         face.organs['nose'].smooth(0.7)
         face.organs['nose'].sharpen()
-        face.smooth(0.7)
         face.sharpen()
     cv2.imshow('new',im.copy())
     cv2.waitKey()
