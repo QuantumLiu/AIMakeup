@@ -194,6 +194,34 @@ class Organ():
             self.patch_bgr_temp[:]=np.minimum(self.patch_bgr_temp+self.patch_mask*sharp*rate,255).astype('uint8')
             self.patch_hsv_temp[:]=cv2.cvtColor(self.patch_bgr_temp, cv2.COLOR_BGR2HSV)[:]
 
+class Forehead(Organ):
+    def __init__(self,im_bgr,im_hsv,temp_bgr,temp_hsv,landmark,mask_organs,name,ksize=None):
+        self.mask_organs=mask_organs
+        super(Forehead,self).__init__(im_bgr,im_hsv,temp_bgr,temp_hsv,landmark,name,ksize)
+    
+    def get_mask_re(self,ksize=None):
+        '''
+        获得局部相对坐标遮罩
+        '''
+        if ksize==None:
+            ksize=self.ksize
+        landmark_re=self.landmark.copy()
+        landmark_re[:,1]-=np.max([self.top-self.move,0])
+        landmark_re[:,0]-=np.max([self.left-self.move,0])
+        mask = np.zeros(self.patch_bgr.shape[:2], dtype=np.float64)
+    
+        self._draw_convex_hull(mask,
+                         landmark_re,
+                         color=1)
+        
+        mask = np.array([mask, mask, mask]).transpose((1, 2, 0))
+    
+        mask = (cv2.GaussianBlur(mask, ksize, 0) > 0) * 1.0
+        patch_organs=self.get_patch(self.mask_organs)
+        mask= cv2.GaussianBlur(mask, ksize, 0)[:]
+        mask[patch_organs>0]=(1-patch_organs[patch_organs>0])
+        return mask
+        
 class Face(Organ):
     '''
     脸类
@@ -219,7 +247,7 @@ class Face(Organ):
         mask_nose=self.organs['nose'].get_mask_abs()
         mask_organs=(self.organs['mouth'].get_mask_abs()+mask_nose+self.organs['left eye'].get_mask_abs()+self.organs['right eye'].get_mask_abs()+self.organs['left brow'].get_mask_abs()+self.organs['right brow'].get_mask_abs())
         forehead_landmark=self.get_forehead_landmark(im_bgr,landmarks,mask_organs,mask_nose)
-        self.organs['forehead']=Organ(im_bgr,img_hsv,temp_bgr,temp_hsv,forehead_landmark,'forehead')
+        self.organs['forehead']=Forehead(im_bgr,img_hsv,temp_bgr,temp_hsv,forehead_landmark,mask_organs,'forehead')
         mask_organs+=self.organs['forehead'].get_mask_abs()
 
         # 人脸的完整标记点
@@ -248,7 +276,7 @@ class Face(Organ):
         index_bool=[]
         for ch in range(3):
             mean,std=np.mean(im_bgr[:,:,ch][mask_nose[:,:,ch]>0]),np.std(im_bgr[:,:,ch][mask_nose[:,:,ch]>0])
-            up,down=mean+std,mean-std
+            up,down=mean+0.5*std,mean-0.5*std
             index_bool.append((im_bgr[:,:,ch]<down)|(im_bgr[:,:,ch]>up))
         index_zero=((mask>0)&index_bool[0]&index_bool[1]&index_bool[2])
         mask[index_zero]=0
@@ -302,7 +330,7 @@ class Makeup():
         return im_bgr,temp_bgr,self.get_faces(im_bgr,im_hsv,temp_bgr,temp_hsv,fname)
 
 if __name__=='__main__':
-    path='./raw/10.jpg'
+    path='./heads/5.jpg'
     mu=Makeup()
     im,temp_bgr,faces=mu.read_and_mark(path)
     imc=im.copy()

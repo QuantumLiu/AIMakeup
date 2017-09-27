@@ -150,12 +150,12 @@ class Ui_MainWindow(object):
         value=min(1,max(self.sl_smooth.value()/100,0))
         def fun(face,value):
             face.smooth(value,confirm=False)
-            face.organs['left eye'].smooth(value,confirm=False)
-            face.organs['right eye'].smooth(value,confirm=False)
-            face.organs['left brow'].smooth(value,confirm=False)
-            face.organs['right brow'].smooth(value,confirm=False)
-            face.organs['nose'].smooth(value,confirm=False)
-            face.organs['forehead'].smooth(value,confirm=False)
+            face.organs['left eye'].smooth(value*2/3,confirm=False)
+            face.organs['right eye'].smooth(value*2/3,confirm=False)
+            face.organs['left brow'].smooth(value*2/3,confirm=False)
+            face.organs['right brow'].smooth(value*2/3,confirm=False)
+            face.organs['nose'].smooth(value*2/3,confirm=False)
+            face.organs['forehead'].smooth(value*3/2,confirm=False)
             face.organs['mouth'].smooth(value,confirm=False)
         self._mapfaces(fun,value)
     
